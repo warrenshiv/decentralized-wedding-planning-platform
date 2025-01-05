@@ -56101,286 +56101,421 @@ var src_exports = {};
 __export(src_exports, {
   default: () => src_default
 });
-var replies = Record2({
-  by: Principal3,
-  newsid: Principal3,
-  reply: text
+var Review = Record2({
+  author: Principal3,
+  rating: nat64,
+  comment: text,
+  date: nat64
 });
-var news = Record2({
-  title: text,
-  description: text,
-  id: Principal3,
-  replies: Vec2(replies)
+var Category = Variant2({
+  Venue: text,
+  Catering: text,
+  Photography: text,
+  Music: text,
+  Decor: text,
+  Planning: text,
+  Attire: text,
+  Beauty: text,
+  Transport: text,
+  Stationery: text,
+  Cake: text,
+  Favors: text,
+  Other: text
 });
-var channel = Record2({
+var Vendor = Record2({
+  id: text,
+  owner: Principal3,
   name: text,
-  owner: Principal3,
-  news: Vec2(news),
-  followers: Vec2(text)
+  category: Category,
+  description: text,
+  serviceCost: nat64,
+  availability: Vec2(text),
+  // ISO timestamps of available dates
+  rating: nat64,
+  reviews: Vec2(Review),
+  bookings: Vec2(Principal3),
+  // wedding IDs
+  verified: bool,
+  portfolio: Vec2(text)
+  // URLs to portfolio items
 });
-var User = Record2({
-  id: Principal3,
-  username: text,
-  channelcreated: Vec2(text),
-  datejoined: nat64
+var VendorBooking = Record2({
+  vendorId: text,
+  weddingId: text,
+  weddingOffer: nat64,
+  additionalDetails: Opt2(text),
+  status: text,
+  // "pending", "confirmed", "paid"
+  date: text
 });
-var channelPayloads = Record2({
-  nameofchannel: text,
-  username: text
+var TimelineItem = Record2({
+  weddingId: text,
+  time: text,
+  description: text,
+  responsible: text,
+  status: text
+  // "pending", "completed"
 });
-var newspayload = Record2({
+var Task = Record2({
+  id: text,
   title: text,
   description: text,
-  owner: Principal3,
-  channelname: text
+  deadline: text,
+  assignedTo: text,
+  status: text,
+  // "pending", "in-progress", "completed"
+  budget: nat64
 });
-var replyPayload = Record2({
-  newsid: Principal3,
-  reply: text,
-  channelname: text,
-  username: text
+var TableAssignment = Variant2({
+  VIPTable: text,
+  familyTable: text,
+  Table1: text,
+  Table2: text,
+  Table3: text,
+  Table4: text,
+  Table5: text,
+  Table6: text,
+  Table7: text,
+  Table8: text,
+  Table9: text,
+  Table10: text,
+  unassigned: text
 });
-var userPayload = Record2({
-  username: text
+var Guest = Record2({
+  name: text,
+  guestEmail: text,
+  rsvpStatus: text,
+  // "pending", "confirmed", "declined"
+  dietaryRestrictions: text,
+  plusOne: bool,
+  tableAssignment: TableAssignment
 });
-var followchannelPayload = Record2({
-  nameofchannel: text,
-  username: text
+var RegistryItem = Record2({
+  name: text,
+  description: text,
+  price: nat64,
+  status: text,
+  // "available", "purchased"
+  purchasedBy: text
 });
-var deleteChannelPayload = Record2({
-  owner: Principal3,
-  nameofchannel: text
+var Wedding = Record2({
+  id: text,
+  coupleNames: Vec2(text),
+  date: text,
+  budget: nat64,
+  location: text,
+  guestCount: nat64,
+  vendors: Vec2(VendorBooking),
+  timeline: Vec2(TimelineItem),
+  tasks: Vec2(Task),
+  guestList: Vec2(Guest),
+  registry: Vec2(RegistryItem),
+  status: text
+  // "planning", "upcoming", "completed"
 });
-var getnewsPayload = Record2({
-  channelname: text
+var RegisterVendorPayload = Record2({
+  name: text,
+  category: Category,
+  description: text,
+  serviceCost: nat64,
+  availability: Vec2(text),
+  portfolio: Vec2(text)
 });
-var channelsstorages = StableBTreeMap(0);
-var usersstorages = StableBTreeMap(1);
-var newsstorages = StableBTreeMap(2);
-var Errors = Variant2({
-  channelDoesNotExist: text,
-  channelAlreadyExist: text,
-  UserDoesNotExist: text,
-  EnterCorrectDetais: text,
-  GroupNameIsRequired: text,
-  NoMessageWithSuchId: text,
-  userNameAlreadyExist: text,
-  usernameIsRequired: text,
-  credentialsMissing: text,
-  onlyOwnerCanDelete: text,
-  ErrorWhenExitingGropu: text,
-  NotAMemberOfGroup: text,
-  AlreadyAmember: text
+var CreateWeddingPayload = Record2({
+  coupleNames: Vec2(text),
+  date: text,
+  budget: nat64,
+  location: text,
+  guestCount: nat64
+});
+var GuestRSVPPayload = Record2({
+  weddingId: text,
+  name: text,
+  guestEmail: text,
+  dietaryRestrictions: text,
+  plusOne: bool,
+  tableAssignment: text
+});
+var ApproveRSVPPayload = Record2({
+  weddingId: text,
+  guestEmail: text,
+  tableAssignment: TableAssignment
+});
+var BookVendorPayload = Record2({
+  vendorId: text,
+  weddingId: text,
+  weddingOffer: nat64,
+  additionalDetails: Opt2(text)
+});
+var AddTimelineItemPayload = Record2({
+  weddingId: text,
+  time: text,
+  description: text,
+  responsible: text,
+  status: text
+});
+var vendorStorage = StableBTreeMap(0);
+var weddingStorage = StableBTreeMap(1);
+var Message = Variant2({
+  VendorNotFound: text,
+  WeddingNotFound: text,
+  DateUnavailable: text,
+  UnauthorizedAction: text,
+  BudgetExceeded: text,
+  InvalidDate: text
 });
 var src_default = Canister({
-  registerUser: update2([userPayload], Result(text, Errors), (payload) => {
-    if (!payload.username) {
-      return Err({ usernameIsRequired: "username is required" });
-    }
-    const getUser = usersstorages.get(payload.username);
-    if (getUser) {
-      return Err({
-        userNameAlreadyExist: "username i laready taken try another one"
-      });
-    }
-    const createUser = {
-      id: ic.caller(),
-      username: payload.username,
-      channelcreated: [],
-      datejoined: ic.time()
-    };
-    usersstorages.insert(payload.username, createUser);
-    return Ok(`user with ${payload.username} has been created successfully`);
-  }),
-  createchannel: update2([channelPayloads], Result(text, Errors), (payload) => {
-    if (!payload.nameofchannel || !payload.username) {
-      return Err({ credentialsMissing: `channel name is missing` });
-    }
-    const findChannel = channelsstorages.get(payload.nameofchannel);
-    if (findChannel) {
-      return Err({
-        channelAlreadyExist: `comunity with ${payload.nameofchannel} already exist`
-      });
-    }
-    const getUser = usersstorages.get(payload.username);
-    if (!getUser) {
-      return Err({
-        UserDoesNotExist: `user with ${payload.username} is not registered`
-      });
-    }
-    const idOfOwner = generateId();
-    const id4 = ic.caller();
-    const createChannel = {
-      owner: id4,
-      name: payload.nameofchannel,
-      news: [],
-      followers: []
-    };
-    channelsstorages.insert(payload.nameofchannel, createChannel);
-    const updateUser = {
-      ...getUser,
-      channelcreated: [...getUser.channelcreated, payload.nameofchannel]
-    };
-    usersstorages.insert(payload.username, updateUser);
-    return Ok(`${payload.nameofchannel} channel has been created successfully`);
-  }),
-  //get all available channels
-  getAllChannels: query2([], Vec2(channel), () => {
-    return channelsstorages.values();
-  }),
-  //follow the channel
-  followchannel: update2([followchannelPayload], text, (payload) => {
-    if (!payload.nameofchannel || !payload.username) {
-      return "missing credentials";
-    }
-    const getUser = usersstorages.get(payload.username);
-    if (!getUser) {
-      return `user with given ${payload.username} does not exist`;
-    }
-    const getChannel = channelsstorages.get(payload.nameofchannel);
-    if (!getChannel) {
-      return `${payload.nameofchannel} does not exist`;
-    }
-    const checkUser = getChannel.followers.find(
-      (val) => val == payload.username
-    );
-    if (checkUser) {
-      return "already following the channel";
-    }
-    const updatedChannel = {
-      ...getChannel,
-      followers: [...getChannel.followers, payload.username]
-    };
-    channelsstorages.insert(payload.nameofchannel, updatedChannel);
-    return `successfully followed ${payload.nameofchannel}`;
-  }),
-  //unfollow the channel
-  unfollowchannel: update2([followchannelPayload], text, (payload) => {
-    if (!payload.nameofchannel || !payload.username) {
-      return "missing credentials";
-    }
-    const getUser = usersstorages.get(payload.username);
-    if (!getUser) {
-      return `user with given ${payload.username} does not exist`;
-    }
-    const getChannel = channelsstorages.get(payload.nameofchannel);
-    if (!getChannel) {
-      return `${payload.nameofchannel} does not exist`;
-    }
-    const checkUser = getChannel.followers.find(
-      (val) => val == payload.username
-    );
-    if (!checkUser) {
-      return "not a follower of the channel";
-    }
-    const updatedChannel = {
-      ...getChannel,
-      followers: getChannel.followers.filter((val) => payload.username !== val)
-    };
-    channelsstorages.insert(payload.nameofchannel, updatedChannel);
-    return "successfully existed the group";
-  }),
-  //delete channel
-  deletechannel: update2(
-    [deleteChannelPayload],
-    Result(text, Errors),
+  // Vendor Management
+  registerVendor: update2(
+    [RegisterVendorPayload],
+    Result(Record2({ message: text, vendor: Vendor }), Message),
     (payload) => {
-      if (!payload.nameofchannel || !payload.owner) {
-        return Err({ credentialsMissing: "some credentials are missing" });
-      }
-      const checkChannel = channelsstorages.get(payload.nameofchannel);
-      if (!checkChannel) {
-        return Err({
-          channelDoesNotExist: `${payload.nameofchannel} does not exist`
+      try {
+        const vendorId = v4_default();
+        if (vendorStorage.get(vendorId)) {
+          return Err({ UnauthorizedAction: "Vendor already registered" });
+        }
+        const createdVendor = {
+          ...payload,
+          id: vendorId,
+          owner: ic.caller(),
+          rating: 0n,
+          reviews: [],
+          bookings: [],
+          verified: false
+        };
+        vendorStorage.insert(vendorId, createdVendor);
+        return Ok({
+          message: "Vendor registered successfully",
+          vendor: createdVendor
         });
+      } catch (error2) {
+        return Err({ UnauthorizedAction: `Registration failed: ${error2}` });
       }
-      if (checkChannel.owner.toText() !== payload.owner.toText()) {
-        return Err({
-          onlyOwnerCanDelete: "only owner can delete the channel"
-        });
-      }
-      channelsstorages.remove(payload.nameofchannel);
-      return Ok(`${payload.nameofchannel} has been successufully deleted`);
     }
   ),
-  //post news
-  postnews: update2([newspayload], text, (payload) => {
-    if (!payload.description || !payload.title || !payload.owner || !payload.channelname) {
-      return "missing credentails";
+  createWedding: update2(
+    [CreateWeddingPayload],
+    Result(Record2({ message: text, wedding: Wedding }), Message),
+    (payload) => {
+      const time3 = (/* @__PURE__ */ new Date()).toISOString();
+      try {
+        if (payload.date < time3) {
+          return Err({ InvalidDate: "Wedding date must be in the future" });
+        }
+        const weddingId = v4_default();
+        const createdWedding = {
+          ...payload,
+          id: weddingId,
+          vendors: [],
+          timeline: [],
+          tasks: [],
+          guestList: [],
+          registry: [],
+          status: "planning"
+        };
+        weddingStorage.insert(weddingId, createdWedding);
+        return Ok({
+          message: "Wedding created successfully",
+          wedding: createdWedding
+        });
+      } catch (error2) {
+        return Err({ UnauthorizedAction: `Wedding creation failed: ${error2}` });
+      }
     }
-    const checkChannel = channelsstorages.get(payload.channelname);
-    if (!checkChannel) {
-      return "channel does not exists";
+  ),
+  bookVendor: update2(
+    [BookVendorPayload],
+    Result(
+      Record2({
+        message: text,
+        wedding: Wedding,
+        vendor: Vendor,
+        booking: VendorBooking
+      }),
+      Message
+    ),
+    (payload) => {
+      try {
+        const wedding = weddingStorage.get(payload.weddingId);
+        const vendor = vendorStorage.get(payload.vendorId);
+        if (!wedding) {
+          return Err({ WeddingNotFound: "Wedding not found" });
+        }
+        if (!vendor) {
+          return Err({ VendorNotFound: "Vendor not found" });
+        }
+        if (!vendor.availability.includes(wedding.date)) {
+          return Err({
+            DateUnavailable: "Vendor not available on wedding date"
+          });
+        }
+        const vendorBooking = {
+          ...payload,
+          status: "pending",
+          date: wedding.date
+        };
+        const updatedWedding = {
+          ...wedding,
+          vendors: [...wedding.vendors, vendorBooking]
+        };
+        weddingStorage.insert(payload.weddingId, updatedWedding);
+        return Ok({
+          message: "Vendor booked successfully",
+          wedding: updatedWedding,
+          vendor,
+          booking: vendorBooking
+        });
+      } catch (error2) {
+        return Err({ UnauthorizedAction: `Booking failed: ${error2}` });
+      }
     }
-    if (checkChannel.owner.toText() !== payload.owner.toText()) {
-      return "only admin is allowd to perform this action";
+  ),
+  // Guest Management
+  submitGuestRSVP: update2(
+    [GuestRSVPPayload],
+    Result(
+      Record2({
+        message: text,
+        wedding: Wedding,
+        newGuest: Guest
+      }),
+      Message
+    ),
+    (payload) => {
+      try {
+        const wedding = weddingStorage.get(payload.weddingId);
+        if (!wedding) {
+          return Err({ WeddingNotFound: "Wedding not found" });
+        }
+        const existingGuest = wedding.guestList.find(
+          (g2) => g2.guestEmail === payload.guestEmail
+        );
+        if (existingGuest) {
+          return Err({
+            UnauthorizedAction: "Guest RSVP already submitted"
+          });
+        }
+        const newGuest = {
+          ...payload,
+          rsvpStatus: "pending",
+          // Default RSVP status for submission
+          tableAssignment: { unassigned: "Unassigned" }
+          // Default table assignment
+        };
+        const updatedWedding = {
+          ...wedding,
+          guestList: [...wedding.guestList, newGuest]
+        };
+        weddingStorage.insert(payload.weddingId, updatedWedding);
+        return Ok({
+          message: "Guest RSVP submitted successfully",
+          wedding: updatedWedding,
+          newGuest
+        });
+      } catch (error2) {
+        return Err({
+          UnauthorizedAction: `Guest RSVP submission failed: ${error2}`
+        });
+      }
     }
-    let createnews = {
-      title: payload.title,
-      description: payload.description,
-      id: generateId(),
-      replies: []
-    };
-    const updatechannel = {
-      ...checkChannel,
-      news: [...checkChannel.news, createnews]
-    };
-    channelsstorages.insert(payload.channelname, updatechannel);
-    return "added news";
-  }),
-  //get news of a channel
-  get_news: query2([getnewsPayload], Result(Vec2(news), Errors), (payload) => {
-    if (!payload.channelname) {
-      return Err({
-        credentialsMissing: "some credentails are missing"
+  ),
+  approveGuestRSVP: update2(
+    [ApproveRSVPPayload],
+    Result(
+      Record2({
+        message: text,
+        wedding: Wedding,
+        updatedGuest: Guest
+      }),
+      Message
+    ),
+    (payload) => {
+      try {
+        const wedding = weddingStorage.get(payload.weddingId);
+        if (!wedding) {
+          return Err({ WeddingNotFound: "Wedding not found" });
+        }
+        const guest = wedding.guestList.find(
+          (g2) => g2.guestEmail === payload.guestEmail
+        );
+        if (!guest) {
+          return Err({
+            UnauthorizedAction: "Guest not found in the wedding list"
+          });
+        }
+        const updatedGuest = {
+          ...guest,
+          rsvpStatus: "confirmed",
+          tableAssignment: { ...payload.tableAssignment }
+        };
+        const updatedGuestList = wedding.guestList.map(
+          (g2) => g2.guestEmail === payload.guestEmail ? updatedGuest : g2
+        );
+        const updatedWedding = {
+          ...wedding,
+          guestList: updatedGuestList
+        };
+        weddingStorage.insert(payload.weddingId, updatedWedding);
+        return Ok({
+          message: "RSVP approved and table assigned successfully",
+          wedding: updatedWedding,
+          updatedGuest
+        });
+      } catch (error2) {
+        return Err({ UnauthorizedAction: `Failed to approve RSVP: ${error2}` });
+      }
+    }
+  ),
+  // Timeline Management
+  addTimelineItem: update2(
+    [AddTimelineItemPayload],
+    Result(
+      Record2({
+        message: text,
+        wedding: Wedding
+      }),
+      Message
+    ),
+    (payload) => {
+      const wedding = weddingStorage.get(payload.weddingId);
+      if (!wedding) {
+        return Err({ WeddingNotFound: "Wedding not found" });
+      }
+      const timelineItem = {
+        ...payload,
+        status: "pending"
+      };
+      const updatedWedding = {
+        ...wedding,
+        timeline: [...wedding.timeline, timelineItem]
+      };
+      weddingStorage.insert(payload.weddingId, updatedWedding);
+      return Ok({
+        message: "Timeline item added successfully",
+        wedding: updatedWedding
       });
     }
-    return Ok(channelsstorages.get(payload.channelname)?.news);
+  ),
+  // Queries
+  getWeddingDetails: query2([text], Result(Wedding, Message), (weddingId) => {
+    const wedding = weddingStorage.get(weddingId);
+    if (!wedding) {
+      return Err({ WeddingNotFound: "Wedding not found" });
+    }
+    return Ok(wedding);
   }),
-  //reply to news
-  reply_to_news: update2([replyPayload], text, (payload) => {
-    if (!payload.channelname || !payload.username || !payload.reply || !payload.newsid) {
-      return "missing crendentials";
+  getVendorDetails: query2([text], Result(Vendor, Message), (vendorId) => {
+    const vendor = vendorStorage.get(vendorId);
+    if (!vendor) {
+      return Err({ VendorNotFound: "Vendor not found" });
     }
-    const checkChannel = channelsstorages.get(payload.channelname);
-    if (!checkChannel) {
-      return "channel does not exists";
-    }
-    const checkUser = checkChannel.followers.find(
-      (val) => val == payload.username
-    );
-    if (!checkUser) {
-      return "only followers can reply or comment about news";
-    }
-    const checknewsid = checkChannel.news.find(
-      (val) => val.id.toText() == payload.newsid.toText()
-    );
-    if (!checknewsid) {
-      return "news id is invalid";
-    }
-    const new_reply = {
-      by: ic.caller(),
-      newsid: payload.newsid,
-      reply: payload.reply
-    };
-    const filteredNews = checkChannel.news.map((item) => {
-      if (item.id.toText() === payload.newsid.toText()) {
-        return { ...item, replies: [...item.replies, new_reply] };
-      }
-      return item;
-    });
-    const updatechannel = {
-      ...checkChannel,
-      news: filteredNews
-    };
-    channelsstorages.insert(payload.channelname, updatechannel);
-    return "reply sent";
+    return Ok(vendor);
+  }),
+  searchVendors: query2([text], Vec2(Vendor), (category) => {
+    return vendorStorage.values().filter((vendor) => Object.keys(vendor.category)[0] === category);
   })
 });
-function generateId() {
-  const randomBytes4 = new Array(29).fill(0).map((_) => Math.floor(Math.random() * 256));
-  return Principal3.fromUint8Array(Uint8Array.from(randomBytes4));
-}
 
 // <stdin>
 ethers_exports.FetchRequest.registerGetUrl(ethersGetUrl);

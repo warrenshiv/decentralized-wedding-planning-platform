@@ -1,13 +1,13 @@
 {
     "canisters": {
-        "hello_world": {
+        "wedding_planning": {
             "type": "azle",
             "main": "src/index.ts",
             "custom": {
                 "experimental": true
             },
             "declarations": {
-                "output": "test/dfx_generated/hello_world",
+                "output": "test/dfx_generated/wedding_planning",
                 "node_compatibility": true
             }
         }
