@@ -52,7 +52,7 @@ const Vendor = Record({
   category: Category,
   description: text,
   serviceCost: nat64,
-  availability: Vec(nat64), // timestamps of available dates
+  availability: Vec(text), // ISO timestamps of available dates
   rating: nat64,
   reviews: Vec(Review),
   bookings: Vec(Principal), // wedding IDs
@@ -68,23 +68,26 @@ const VendorBooking = Record({
   weddingOffer: nat64,
   additionalDetails: Opt(text),
   status: text, // "pending", "confirmed", "paid"
-  date: nat64,
+  date: text,
 });
 
 type VendorBooking = typeof VendorBooking.tsType;
 
 const TimelineItem = Record({
-  time: nat64,
+  weddingId: text,
+  time: text,
   description: text,
   responsible: text,
   status: text, // "pending", "completed"
 });
 
+type TimelineItem = typeof TimelineItem.tsType;
+
 const Task = Record({
   id: text,
   title: text,
   description: text,
-  deadline: nat64,
+  deadline: text,
   assignedTo: text,
   status: text, // "pending", "in-progress", "completed"
   budget: nat64,
@@ -109,7 +112,7 @@ const TableAssignment = Variant({
 
 const Guest = Record({
   name: text,
-  email: text,
+  guestEmail: text,
   rsvpStatus: text, // "pending", "confirmed", "declined"
   dietaryRestrictions: text,
   plusOne: bool,
@@ -129,7 +132,7 @@ const RegistryItem = Record({
 const Wedding = Record({
   id: text,
   coupleNames: Vec(text),
-  date: nat64,
+  date: text,
   budget: nat64,
   location: text,
   guestCount: nat64,
@@ -153,20 +156,20 @@ const RegisterVendorPayload = Record({
   category: Category,
   description: text,
   serviceCost: nat64,
-  availability: Vec(nat64),
+  availability: Vec(text),
   portfolio: Vec(text),
 });
 
 // Wedding Planning
 const CreateWeddingPayload = Record({
   coupleNames: Vec(text),
-  date: nat64,
+  date: text,
   budget: nat64,
   location: text,
   guestCount: nat64,
 });
 
-// GuestRSVP P
+// GuestRSVP Payload
 const GuestRSVPPayload = Record({
   weddingId: text,
   name: text,
@@ -174,6 +177,13 @@ const GuestRSVPPayload = Record({
   dietaryRestrictions: text,
   plusOne: bool,
   tableAssignment: text,
+});
+
+// Approve RSVP Payload
+const ApproveRSVPPayload = Record({
+  weddingId: text,
+  guestEmail: text,
+  tableAssignment: TableAssignment,
 });
 
 // Vendor Booking
@@ -184,9 +194,12 @@ const BookVendorPayload = Record({
   additionalDetails: Opt(text),
 });
 
-// Guest Management
-const UpdateGuestRSVPPayload = Record({
-  guestEmail: text,
+// Timeline Item Payload
+const AddTimelineItemPayload = Record({
+  weddingId: text,
+  time: text,
+  description: text,
+  responsible: text,
   status: text,
 });
 
@@ -244,8 +257,9 @@ export default Canister({
     [CreateWeddingPayload],
     Result(Record({ message: text, wedding: Wedding }), Message),
     (payload) => {
+      const time = new Date().toISOString();
       try {
-        if (payload.date < ic.time()) {
+        if (payload.date < time) {
           return Err({ InvalidDate: "Wedding date must be in the future" });
         }
 
@@ -337,6 +351,62 @@ export default Canister({
       Record({
         message: text,
         wedding: Wedding,
+        newGuest: Guest,
+      }),
+      Message
+    ),
+    (payload) => {
+      try {
+        const wedding = weddingStorage.get(payload.weddingId);
+        if (!wedding) {
+          return Err({ WeddingNotFound: "Wedding not found" });
+        }
+
+        // Check if the guest already exists
+        const existingGuest = wedding.guestList.find(
+          (g) => g.guestEmail === payload.guestEmail
+        );
+        if (existingGuest) {
+          return Err({
+            UnauthorizedAction: "Guest RSVP already submitted",
+          });
+        }
+
+        // Create the new guest RSVP
+        const newGuest: Guest = {
+          ...payload,
+          rsvpStatus: "pending", // Default RSVP status for submission
+          tableAssignment: { unassigned: "Unassigned" }, // Default table assignment
+        };
+
+        // Update the wedding's guest list
+        const updatedWedding: Wedding = {
+          ...wedding,
+          guestList: [...wedding.guestList, newGuest],
+        };
+
+        // Save the updated wedding details
+        weddingStorage.insert(payload.weddingId, updatedWedding);
+
+        return Ok({
+          message: "Guest RSVP submitted successfully",
+          wedding: updatedWedding,
+          newGuest: newGuest,
+        });
+      } catch (error) {
+        return Err({
+          UnauthorizedAction: `Guest RSVP submission failed: ${error}`,
+        });
+      }
+    }
+  ),
+
+  approveGuestRSVP: update(
+    [ApproveRSVPPayload],
+    Result(
+      Record({
+        message: text,
+        wedding: Wedding,
         updatedGuest: Guest,
       }),
       Message
@@ -348,9 +418,9 @@ export default Canister({
           return Err({ WeddingNotFound: "Wedding not found" });
         }
 
-        // Find the guest that was updated
+        // Find the guest in the wedding's guest list
         const guest = wedding.guestList.find(
-          (g) => g.email === payload.guestEmail
+          (g) => g.guestEmail === payload.guestEmail
         );
         if (!guest) {
           return Err({
@@ -358,79 +428,92 @@ export default Canister({
           });
         }
 
-        const updatedGuest = { ...guest, rsvpStatus: payload.status };
+        // Update the guest's RSVP status and table assignment
+        const updatedGuest: Guest = {
+          ...guest,
+          rsvpStatus: "confirmed",
+          tableAssignment: { ...payload.tableAssignment },
+        };
 
-        // Update the guest list
-        const updatedGuests = wedding.guestList.map((g) =>
-          g.email === payload.guestEmail ? updatedGuest : g
+        // Update the wedding's guest list
+        const updatedGuestList = wedding.guestList.map((g) =>
+          g.guestEmail === payload.guestEmail ? updatedGuest : g
         );
 
         const updatedWedding: Wedding = {
           ...wedding,
-          guestList: updatedGuests,
+          guestList: updatedGuestList,
         };
 
+        // Save the updated wedding
         weddingStorage.insert(payload.weddingId, updatedWedding);
 
         return Ok({
-          message: "RSVP updated successfully",
+          message: "RSVP approved and table assigned successfully",
           wedding: updatedWedding,
           updatedGuest: updatedGuest,
         });
       } catch (error) {
-        return Err({ UnauthorizedAction: `RSVP update failed: ${error}` });
+        return Err({ UnauthorizedAction: `Failed to approve RSVP: ${error}` });
       }
     }
   ),
 
   // Timeline Management
   addTimelineItem: update(
-    [Principal, typeof TimelineItem.tsType],
-    Result(text, typeof Errors.tsType),
-    (weddingId, item) => {
-      const wedding = weddingStorage.get(weddingId);
+    [AddTimelineItemPayload],
+    Result(
+      Record({
+        message: text,
+        wedding: Wedding,
+      }),
+      Message
+    ),
+    (payload) => {
+      const wedding = weddingStorage.get(payload.weddingId);
       if (!wedding) {
         return Err({ WeddingNotFound: "Wedding not found" });
       }
 
-      const updatedWedding = {
-        ...wedding,
-        timeline: [...wedding.timeline, item],
+      const timelineItem: TimelineItem = {
+        ...payload,
+        status: "pending",
       };
 
-      weddingStorage.insert(weddingId, updatedWedding);
-      return Ok("Timeline item added successfully");
+      const updatedWedding = {
+        ...wedding,
+        timeline: [...wedding.timeline, timelineItem],
+      };
+
+      weddingStorage.insert(payload.weddingId, updatedWedding);
+
+      return Ok({
+        message: "Timeline item added successfully",
+        wedding: updatedWedding,
+      });
     }
   ),
 
   // Queries
-  getWeddingDetails: query(
-    [Principal],
-    Result(typeof Wedding.tsType, typeof Errors.tsType),
-    (weddingId) => {
-      const wedding = weddingStorage.get(weddingId);
-      if (!wedding) {
-        return Err({ WeddingNotFound: "Wedding not found" });
-      }
-      return Ok(wedding);
+  getWeddingDetails: query([text], Result(Wedding, Message), (weddingId) => {
+    const wedding = weddingStorage.get(weddingId);
+    if (!wedding) {
+      return Err({ WeddingNotFound: "Wedding not found" });
     }
-  ),
+    return Ok(wedding);
+  }),
 
-  getVendorDetails: query(
-    [Principal],
-    Result(typeof Vendor.tsType, typeof Errors.tsType),
-    (vendorId) => {
-      const vendor = vendorStorage.get(vendorId);
-      if (!vendor) {
-        return Err({ VendorNotFound: "Vendor not found" });
-      }
-      return Ok(vendor);
+  getVendorDetails: query([text], Result(Vendor, Message), (vendorId) => {
+    const vendor = vendorStorage.get(vendorId);
+    if (!vendor) {
+      return Err({ VendorNotFound: "Vendor not found" });
     }
-  ),
+    return Ok(vendor);
+  }),
 
-  searchVendors: query([text], Vec(typeof Vendor.tsType), (category) => {
+  searchVendors: query([text], Vec(Vendor), (category) => {
     return vendorStorage
       .values()
-      .filter((vendor) => vendor.category === category);
+      .filter((vendor) => Object.keys(vendor.category)[0] === category);
   }),
 });
